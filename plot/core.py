@@ -15,25 +15,41 @@ def sort_plots(plots):
 
 
 def order_applicants(applicants):
-    return sorted(applicants, key=lambda a: -a["tickets"])
+    return sorted(applicants,
+                  key=lambda a: (not a["deed"], -a["priority"], -a["tickets"]))
 
 
 def assign(state, req_id, counter):
+    if req_id in state["ledger"]:
+        return {
+            "req_id": req_id,
+            "status": "duplicate",
+            "assigned": [],
+            "waiting": [],
+            "scanned": counter.scanned,
+        }
     plots = sort_plots(state["plots"])
     assigned = []
     waiting = []
-    for plot, app in zip(plots, order_applicants(state["applicants"])):
-        dup = False
-        for row in assigned:
-            counter.scanned += 1
-            if row[1] == app["player"]:
-                dup = True
-                break
-        if dup:
+    taken = set()
+    guild_counts = {}
+    plot_index = 0
+    for app in order_applicants(state["applicants"]):
+        player = app["player"]
+        counter.scanned += 1
+        if player in taken:
             continue
-        assigned.append([plot["id"], app["player"]])
-    for app in order_applicants(state["applicants"])[len(plots):]:
-        waiting.append(app["player"])
+        if plot_index >= len(plots):
+            waiting.append(player)
+            continue
+        guild = app["guild"]
+        if guild_counts.get(guild, 0) >= GUILD_CAP:
+            waiting.append(player)
+            continue
+        taken.add(player)
+        guild_counts[guild] = guild_counts.get(guild, 0) + 1
+        assigned.append([plots[plot_index]["id"], player])
+        plot_index += 1
     state["assigned"].extend(assigned)
     state["ledger"].append(req_id)
     return {
